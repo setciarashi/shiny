@@ -1,0 +1,138 @@
+---
+title: "R ODBC"
+author: "Lin Lu"
+date: "9/17/2021"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+## General Tutorial about ODBC in R
+<https://db.rstudio.com/getting-started/connect-to-database/>
+<https://db.rstudio.com/r-packages/odbc/>
+
+For R, packages, ODBC + DBI + dplyr, are the best practice so far. RODBC is outdated.
+```{R}
+library(odbc)
+library(DBI)
+```
+
+Verify what drivers have been installed using odbcListDrivers():
+```{R}
+odbcListDrivers()
+odbc::odbcListDataSources()
+```
+
+These functions should return the installed drivers and the configured data source name (DSN) stored in .odbcinst.ini and .odbc.ini. These (hidden) files are at the present working directory (pwd). In my local environment, the files are at my account folder: /Users/myaccount/.odbcinst.ini.
+
+Without the neccessary drivers installed or DSN set up, both files can be empty. Once they are set up appropriately, both files will have correct information and I will be able to build a connection as follows in R.
+```{R}
+con<-DBI::dbConnect(odbc::odbc()
+               ,"A DSN listed in odbcListDataSources"
+               ,UID    = "Username"
+               ,PWD    = rstudioapi::askForPassword("Enter password")
+)
+```
+
+With this goal, I started to install necessary packages, drivers, configurations of DSN and then came back to R to build the connection.
+
+## ODBC Driver Management
+
+For Linux and MacOS, to install ODBC drivers, unixODBC or iODBC is neccessary. According to the document from RStudo, drivers compiled against iODBC are not fully supported, therefore, unixODBC is preferred.
+
+Windows is bundled with ODBC libraries, so Windows users will skip the steps related to installing ODBC management tool. They will install the driver directly.
+
+unixODBC requires gcc, for Mac, it's better to install xcode first and gnu. xcode can be installed through dmg from the apple offical website. Run the following for gnu if homebrew is installed:
+```{shell}
+    brew install gnu
+```
+### Install and Configure unixODBC
+The following instructions successfully led me to a correct installation and configuration.
+<https://community.oracle.com/tech/developers/discussion/4120787/oracle-12-2-odbc-driver-installation-on-macos-with-unixodbc>
+<https://blogs.oracle.com/opal/post/installing-the-oracle-odbc-driver-on-macos?dd>
+
+To install the unixODBC, run the following if homebrew is installed: Download unixODBC-2.3.9.zip from the website unzip the downloaded package
+```{shell}
+    cd unixODBC-2.3.9
+    ./configure
+    ./make
+    sudo ./make install
+```
+Check version of existing unixODBC
+
+```{shell}
+    odbcinst --version
+```
+### Install A ODBC Driver: Oracle
+Connections to Oracle require the Oracle Instant Client to be installed. In my case, I was going to connect Oracle 12 Database (x64). Two packages were necessary for installing an Oracle database driver. First, download Instant Client Basic (64x) and ODBC (x64) package from oracle's official website: <https://www.oracle.com/database/technologies/appdev/oci.html>.
+```{shell}
+unzip instantclient-basic-macos.x64-19.8.0.0.0dbru.zip
+unzip instantclient-odbc-macos.x64-19.8.0.0.0dbru.zip
+```
+
+A folder was created called instantclient_19_8. All needed driver files and libraries are stored in this folder. The installation needs to be done through odbc_update_ini.sh. Before running it, read through the file to make sure the configurations are correct, especially, SO_NAME should be set the same name as the library in instantclient_19_8.
+```{shell}
+ SO_NAME=libsqora.dylib.19.1
+```
+
+Next, configure the ODBCDM_Home depository for ODBC system to find the libraries and drivers. Use this command: odbc_update_ini.sh <ODBCDM_Home> [<Install_Location> <Driver_Name> <DSN> <ODBCINI>]
+
+I set /usr/local as the home depository. I skip the DSN configurations and will set it up soon.
+```{shell}
+    odbc_update_ini.sh /usr/local
+```
+
+This creates a default DSN of "OracleODBC-19". Edit the new .odbc.ini. Mine is at my account folder: /Users/myaccount/.odbcinst.ini.
+```
+Driver = Oracle 19 ODBC driver
+DSN = OracleODBC-19
+ServerName = [your.database.address:port/SERVICE_NAME]
+```
+
+The information is provided by the database admin together with a tnsnames.ora file. Put the tnsnames.ora under instantclient_19_8/network/admin. This is the default place for ODBC Oracle driver to find it.
+
+Create symbolic links at to let the system find the files at usr/local/lib.
+```{shell}
+mkdir usr/local/lib
+ln -s /path/to/instantclient_19_8/libclntsh.dylib.19.1 /usr/local/lib
+ln -s /path/to/instantclient_19_8/libclntshcore.dylib.19.1 /usr/local/lib
+ln -s /path/to/instantclient_19_8/libociei.dylib /usr/local/lib
+export PATH=/path/to/instantclient_19_8:$PATH
+```
+
+Now the newly installed driver should be found. It's called .
+
+Now the newly set driver, "Oracle 19 ODBC driver", and DNS, "OracleODBC-19", should be found and run by R.
+```{R}
+odbcListDrivers()
+odbcListDataSources()
+```
+
+Connect the databse through dbConnect(). Connect through VPN if outside the network.
+```{R}
+con<-dbConnect(odbc()
+               ,"OracleODBC-19"
+               ,UID    = rstudioapi::askForPassword("Enter user")
+               ,PWD    = rstudioapi::askForPassword("Enter password")
+)
+
+odbcListObjects(con)
+dbListTables(conn = con, schema_name = "RDS_LEARNING_ANALYTICS")
+#example query
+example<-dbGetQuery(con, "select count(*) from ITOOLS_OLA_QUIZ_VIEW")
+dbDisconnect(con)
+```
+
+## Troubleshooting
+### Connection is successfully using isql but not in R
+I set up drivers and DNS all correct but can't connect in R. See this thread. The change of @rpath worked on my machine. The con is that the @rpath is changed to an absolute path from a relative path. Further environmental change may request a manual change here again.
+<https://community.rstudio.com/t/dbconnect-works-in-rstudio-but-fails-in-r-on-macos/9117/3>
+```{shell}
+cd /path/to/instantclient_19_8/
+otool -l libsqora.dylib.19.1
+install_name_tool -id "/usr/local/lib/libsqora.dylib.19.1" libsqora.dylib.19.1
+install_name_tool -change "@rpath/libodbcinst.2.dylib" "/usr/local/lib/libodbcinst.2.dylib" libsqora.dylib.19.1
+install_name_tool -change "@rpath/libclntsh.dylib.19.1" "/usr/local/lib/libclntsh.dylib.19.1" libsqora.dylib.19.1
+install_name_tool -rpath "@executable_path/../../rdbms/lib" "/usr/local/lib" libsqora.dylib.19.1
+
+```
