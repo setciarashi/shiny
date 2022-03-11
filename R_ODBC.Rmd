@@ -83,7 +83,7 @@ I set /usr/local as the home depository. I skip the DSN configurations and will 
 ```
 <Some steps here> On the shiny server, I have the libraries stored at /usr/lib/oracle/21/client64/lib.
 
-The odbc_update_ini.sh creates a default DSN of "OracleODBC-19". Edit the new .odbc.ini. at /Users/myaccount
+The odbc_update_ini.sh creates a default DSN of "OracleODBC-19". Edit the new .odbc.ini. at /Users/myaccount. On my shiny server, it's at /etc/odbc.ini
 ```
 Driver = Oracle 19 ODBC driver
 DSN = OracleODBC-19
