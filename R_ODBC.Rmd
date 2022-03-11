@@ -11,30 +11,31 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 <https://db.rstudio.com/getting-started/connect-to-database/>
 <https://db.rstudio.com/r-packages/odbc/>
 
-For R, packages, ODBC + DBI + dplyr, are the best practice so far. RODBC is outdated.
+For R, ODBC + DBI + dplyr, are the best practice so far. RODBC is outdated.
 ```{R}
 library(odbc)
 library(DBI)
+library(dplyr)
 ```
 
 Verify what drivers have been installed using odbcListDrivers():
 ```{R}
-odbcListDrivers()
+odbc::odbcListDrivers()
 odbc::odbcListDataSources()
 ```
 
-These functions should return the installed drivers and the configured data source name (DSN) stored in .odbcinst.ini and .odbc.ini. These (hidden) files are at the present working directory (pwd). In my local environment, the files are at my account folder: /Users/myaccount/.odbcinst.ini.
+These functions return the installed drivers and the configured data source name (DSN) stored in .odbcinst.ini and .odbc.ini. These (hidden) files are at the present working directory (pwd). In my local Mac OS environment, the files are at my account root folder: /Users/myaccount/.odbcinst.ini.
 
 Without the neccessary drivers installed or DSN set up, both files can be empty. Once they are set up appropriately, both files will have correct information and I will be able to build a connection as follows in R.
 ```{R}
 con<-DBI::dbConnect(odbc::odbc()
                ,"A DSN listed in odbcListDataSources"
                ,UID    = "Username"
-               ,PWD    = rstudioapi::askForPassword("Enter password")
+               ,PWD    = "P@ssw0rd"
 )
 ```
 
-With this goal, I started to install necessary packages, drivers, configurations of DSN and then came back to R to build the connection.
+With this goal, install necessary packages, drivers, configurations of DSN and then come back to R to build the connection.
 
 ## ODBC Driver Management
 
@@ -59,12 +60,11 @@ To install the unixODBC, run the following if homebrew is installed: Download un
     sudo ./make install
 ```
 Check version of existing unixODBC
-
 ```{shell}
     odbcinst --version
 ```
-### Install A ODBC Driver: Oracle
-Connections to Oracle require the Oracle Instant Client to be installed. In my case, I was going to connect Oracle 12 Database (x64). Two packages were necessary for installing an Oracle database driver. First, download Instant Client Basic (64x) and ODBC (x64) package from oracle's official website: <https://www.oracle.com/database/technologies/appdev/oci.html>.
+### Install Oracle ODBC Driver
+Connections to Oracle require Oracle Instant Client to be installed. In my case, I was going to connect Oracle 12 Database (x64). Two packages were necessary for installing an Oracle database driver. First, download Instant Client Basic (64x) and ODBC (x64) package from oracle's official website: <https://www.oracle.com/database/technologies/appdev/oci.html>.
 ```{shell}
 unzip instantclient-basic-macos.x64-19.8.0.0.0dbru.zip
 unzip instantclient-odbc-macos.x64-19.8.0.0.0dbru.zip
@@ -77,21 +77,24 @@ A folder was created called instantclient_19_8. All needed driver files and libr
 
 Next, configure the ODBCDM_Home depository for ODBC system to find the libraries and drivers. Use this command: odbc_update_ini.sh <ODBCDM_Home> [<Install_Location> <Driver_Name> <DSN> <ODBCINI>]
 
-I set /usr/local as the home depository. I skip the DSN configurations and will set it up soon.
+I set /usr/local as the home depository. I skip the DSN configurations and will set it up later.
 ```{shell}
     odbc_update_ini.sh /usr/local
 ```
+<Some steps here> On the shiny server, I have the libraries stored at /usr/lib/oracle/21/client64/lib.
 
-This creates a default DSN of "OracleODBC-19". Edit the new .odbc.ini. Mine is at my account folder: /Users/myaccount/.odbcinst.ini.
+The odbc_update_ini.sh creates a default DSN of "OracleODBC-19". Edit the new .odbc.ini. at /Users/myaccount
 ```
 Driver = Oracle 19 ODBC driver
 DSN = OracleODBC-19
 ServerName = [your.database.address:port/SERVICE_NAME]
+UserID = [your.database.login.UserId]
+Password = [your.database.login.password]
 ```
 
-The information is provided by the database admin together with a tnsnames.ora file. Put the tnsnames.ora under instantclient_19_8/network/admin. This is the default place for ODBC Oracle driver to find it.
+The information is provided by the database admin together with a tnsnames.ora file. Put the tnsnames.ora under instantclient_19_8/network/admin. This is the default place for ODBC Oracle driver to find it. On my shiny server, it's at /usr/lib/oracle/21/client64/lib/network/admin
 
-Create symbolic links at to let the system find the files at usr/local/lib.
+Create symbolic links so the system find the files at usr/local/lib.
 ```{shell}
 mkdir usr/local/lib
 ln -s /path/to/instantclient_19_8/libclntsh.dylib.19.1 /usr/local/lib
@@ -100,9 +103,7 @@ ln -s /path/to/instantclient_19_8/libociei.dylib /usr/local/lib
 export PATH=/path/to/instantclient_19_8:$PATH
 ```
 
-Now the newly installed driver should be found. It's called .
-
-Now the newly set driver, "Oracle 19 ODBC driver", and DNS, "OracleODBC-19", should be found and run by R.
+Now the newly installed driver should be found. It's called "Oracle 19 ODBC driver", and DNS, "OracleODBC-19", should be found by R.
 ```{R}
 odbcListDrivers()
 odbcListDataSources()
@@ -110,21 +111,17 @@ odbcListDataSources()
 
 Connect the databse through dbConnect(). Connect through VPN if outside the network.
 ```{R}
-con<-dbConnect(odbc()
-               ,"OracleODBC-19"
-               ,UID    = rstudioapi::askForPassword("Enter user")
-               ,PWD    = rstudioapi::askForPassword("Enter password")
-)
+con<-dbConnect(odbc::odbc(),"OracleODBC-19")
 
 odbcListObjects(con)
-dbListTables(conn = con, schema_name = "REPLACE_WITH_YOUR_SCHEMA_NAME")
+dbListTables(conn = con, schema_name = "RDS_LEARNING_ANALYTICS")
 #example query
-example<-dbGetQuery(con, "select count(*) from TABLE_NAME")
+example<-dbGetQuery(con, "select count(*) from COURSELIST_RUN_CTRL")
 dbDisconnect(con)
 ```
 
 ## Troubleshooting
-### Connection is successfully using isql but not in R
+### Connection is successful using isql but not in R
 I set up drivers and DNS all correct but can't connect in R. See this thread. The change of @rpath worked on my machine. The con is that the @rpath is changed to an absolute path from a relative path. Further environmental change may request a manual change here again.
 <https://community.rstudio.com/t/dbconnect-works-in-rstudio-but-fails-in-r-on-macos/9117/3>
 ```{shell}
